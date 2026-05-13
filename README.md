@@ -23,7 +23,7 @@ This is the Scape05 launcher, a launcher designed to easily download, verify, an
 4. Once verification is done, the Updater launches the latest Scape05 client.
 
 **Contact & Feedback**
-If you encounter any issues or have feedback, please contact us through our dedicated [Discord server](discord://discord.com/invite/YjuN2bA).
-You can join our discord server at https://discord.scape05.com
+If you encounter any issues or have feedback, please contact us through our dedicated Discord server.
+You can join our discord server at https://discord.com/invite/YjuN2bA
 
 Enjoy your nostalgia on Scape05!
