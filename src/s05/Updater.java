@@ -22,7 +22,7 @@ import java.util.zip.CRC32;
 
 public class Updater implements Runnable {
   
-  private static final String PROPERTIES_URL = "https://cdn.2005.rs/client.properties";
+  private static final String PROPERTIES_URL = "https://gcache.2005.rs/client.properties";
   private static final String CODE_JAR = "lib/code.jar";
   private static final String REVISION_FILE = "revision.txt";
   private static final String LIB_DIR = "lib/";
