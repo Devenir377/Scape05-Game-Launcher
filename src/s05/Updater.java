@@ -23,6 +23,7 @@ import java.util.zip.CRC32;
 public class Updater implements Runnable {
   
   private static final String PROPERTIES_URL = "https://gcache.2005.rs/client.properties";
+  private static final String FALLBACK_PROPERTIES_URL = "https://devenir377.github.io/Scape05-Game-Launcher/client.properties";
   private static final String CODE_JAR = "lib/code.jar";
   private static final String REVISION_FILE = "revision.txt";
   private static final String LIB_DIR = "lib/";
@@ -128,11 +129,26 @@ public class Updater implements Runnable {
     setPercent(10);
     
     properties.clear();
-    properties.load(new ByteArrayInputStream(Signlink.download(PROPERTIES_URL)));
+    properties.load(new ByteArrayInputStream(downloadProperties()));
     requireProperty(properties, "url");
     requireProperty(properties, "revision");
     requireProperty(properties, "crc");
     requireProperty(properties, "main-class");
+  }
+  
+  private byte[] downloadProperties() throws IOException {
+    try {
+      return Signlink.download(PROPERTIES_URL);
+    } catch (IOException primaryFailure) {
+      setAction("Primary server unavailable. Trying fallback...");
+      
+      try {
+        return Signlink.download(FALLBACK_PROPERTIES_URL);
+      } catch (IOException fallbackFailure) {
+        primaryFailure.addSuppressed(fallbackFailure);
+        throw primaryFailure;
+      }
+    }
   }
   
   private void downloadAndVerifyClient(Properties properties) throws Exception {
