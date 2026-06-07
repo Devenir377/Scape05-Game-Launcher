@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,8 +23,10 @@ import java.util.zip.CRC32;
 
 public class Updater implements Runnable {
 	
-	private static final String PROPERTIES_URL = "https://gcache.2005.rs/client.properties";
-	private static final String FALLBACK_PROPERTIES_URL = "https://devenir377.github.io/Scape05-Game-Launcher/client.properties";
+	private static final String PROPERTIES_URL = "https://devenir377.github.io/Scape05-Game-Launcher/client.properties";
+	private static final String FALLBACK_PROPERTIES_URL = "https://gcache.2005.rs/client.properties";
+	private static final String CACHED_PROPERTIES_FALLBACK = "properties-fallback.txt";
+	private static final String FALLBACK_PROPERTY = "fallback";
 	private static final String CODE_JAR = "lib/code.jar";
 	private static final String REVISION_FILE = "revision.txt";
 	private static final String LIB_DIR = "lib/";
@@ -134,21 +137,70 @@ public class Updater implements Runnable {
 		requireProperty(properties, "revision");
 		requireProperty(properties, "crc");
 		requireProperty(properties, "main-class");
+		saveCachedPropertiesFallback(properties);
 	}
 	
 	private byte[] downloadProperties() throws IOException {
 		try {
 			return Signlink.download(PROPERTIES_URL);
 		} catch (IOException primaryFailure) {
-			setAction("Primary server unavailable. Trying fallback...");
+			setAction("Primary server unavailable. Trying website...");
 			
 			try {
 				return Signlink.download(FALLBACK_PROPERTIES_URL);
 			} catch (IOException fallbackFailure) {
 				primaryFailure.addSuppressed(fallbackFailure);
-				throw primaryFailure;
+				return downloadCachedPropertiesFallback(primaryFailure);
 			}
 		}
+	}
+	
+	private byte[] downloadCachedPropertiesFallback(IOException previousFailure) throws IOException {
+		String cachedFallbackUrl = readCachedPropertiesFallback();
+		
+		if (cachedFallbackUrl == null) {
+			throw previousFailure;
+		}
+		
+		setAction("Website unavailable. Trying cached fallback...");
+		
+		try {
+			return Signlink.download(cachedFallbackUrl);
+		} catch (IOException cachedFallbackFailure) {
+			previousFailure.addSuppressed(cachedFallbackFailure);
+			throw previousFailure;
+		}
+	}
+	
+	private String readCachedPropertiesFallback() throws IOException {
+		Path fallbackPath = Signlink.getPath(CACHED_PROPERTIES_FALLBACK);
+		
+		if (!Files.exists(fallbackPath)) {
+			return null;
+		}
+		
+		String fallbackUrl = new String(Files.readAllBytes(fallbackPath), StandardCharsets.UTF_8).trim();
+		
+		return fallbackUrl.isEmpty() ? null : fallbackUrl;
+	}
+	
+	private void saveCachedPropertiesFallback(Properties properties) throws IOException {
+		Path fallbackPath = Signlink.getPath(CACHED_PROPERTIES_FALLBACK);
+		String fallbackUrl = properties.getProperty(FALLBACK_PROPERTY);
+		
+		if (fallbackUrl == null || fallbackUrl.trim().isEmpty()) {
+			Files.deleteIfExists(fallbackPath);
+			return;
+		}
+		
+		Files.createDirectories(fallbackPath.getParent());
+		Files.write(
+				fallbackPath,
+				fallbackUrl.trim().getBytes(StandardCharsets.UTF_8),
+				StandardOpenOption.CREATE,
+				StandardOpenOption.TRUNCATE_EXISTING,
+				StandardOpenOption.WRITE
+		);
 	}
 	
 	private void downloadAndVerifyClient(Properties properties) throws Exception {
