@@ -28,6 +28,7 @@ public class Updater implements Runnable {
   private static final String LIB_DIR = "lib/";
   private static final int VERIFY_PERCENT = 70;
   private static final int COMPLETE_PERCENT = 100;
+  private static final int MAX_CACHE_REFRESH_ATTEMPTS = 1;
   
   JFrame frame;
   Progress progress;
@@ -77,11 +78,11 @@ public class Updater implements Runnable {
   }
   
   private void setPercent(int percent) {
-    this.progress.bar.setValue(percent);
+    SwingUtilities.invokeLater(() -> this.progress.bar.setValue(percent));
   }
   
   private void setAction(String text) {
-    this.progress.action.setText(text);
+    SwingUtilities.invokeLater(() -> this.progress.action.setText(text));
   }
   
   
@@ -91,11 +92,6 @@ public class Updater implements Runnable {
     try {
       while (this.frame.isDisplayable()) {
         switch (this.state) {
-          case -1:
-            clearCachedClient();
-            this.state = 1;
-            continue;
-          
           case 0:
             fetchProperties(properties);
             break;
@@ -133,31 +129,41 @@ public class Updater implements Runnable {
     
     properties.clear();
     properties.load(new ByteArrayInputStream(Signlink.download(PROPERTIES_URL)));
+    requireProperty(properties, "url");
+    requireProperty(properties, "revision");
+    requireProperty(properties, "crc");
+    requireProperty(properties, "main-class");
   }
   
   private void downloadAndVerifyClient(Properties properties) throws Exception {
     Path codePath = Signlink.getPath(CODE_JAR);
     Path revisionPath = Signlink.getPath(REVISION_FILE);
     
-    byte[] clientJar = hasCachedClient(codePath, revisionPath)
-                               ? Files.readAllBytes(codePath)
-                               : downloadClientFiles(properties, codePath, revisionPath);
+    byte[] clientJar = loadOrDownloadClient(properties, codePath, revisionPath);
     
     setAction("Verifying...");
     setPercent(VERIFY_PERCENT);
     Thread.sleep(200L);
     
-    if (!hasExpectedCrc(clientJar, properties.getProperty("crc"))) {
-      this.state = -1;
-      return;
+    for (int attempts = 0; !isValidClient(clientJar, revisionPath, properties); attempts++) {
+      if (attempts >= MAX_CACHE_REFRESH_ATTEMPTS) {
+        throw new IOException("Downloaded client failed verification. Please try again later.");
+      }
+      
+      setAction("Cache is invalid. Downloading fresh client...");
+      clearCachedClient();
+      clientJar = downloadClientFiles(properties, codePath, revisionPath);
+      setAction("Verifying...");
+      setPercent(VERIFY_PERCENT);
+    }
+  }
+  
+  private byte[] loadOrDownloadClient(Properties properties, Path codePath, Path revisionPath) throws IOException {
+    if (hasCachedClient(codePath, revisionPath)) {
+      return Files.readAllBytes(codePath);
     }
     
-    String expectedRevision = properties.getProperty("revision");
-    String actualRevision = new String(Files.readAllBytes(revisionPath)).trim();
-    
-    if (!actualRevision.equals(expectedRevision)) {
-      this.state = -1;
-    }
+    return downloadClientFiles(properties, codePath, revisionPath);
   }
   
   private boolean hasCachedClient(Path codePath, Path revisionPath) {
@@ -167,6 +173,7 @@ public class Updater implements Runnable {
   private byte[] downloadClientFiles(Properties properties, Path codePath, Path revisionPath) throws IOException {
     String baseUrl = properties.getProperty("url");
     String revision = properties.getProperty("revision");
+    Files.createDirectories(codePath.getParent());
     
     byte[] clientJar = downloadWithProgress(
             baseUrl + revision + ".jar",
@@ -174,8 +181,10 @@ public class Updater implements Runnable {
     );
     Files.write(codePath, clientJar, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
     
-    byte[] libraries = downloadWithProgress(baseUrl + "lib.zip", "Downloading libraries...");
-    Signlink.unzip(libraries, Signlink.getPath(LIB_DIR));
+    if (Boolean.parseBoolean(properties.getProperty("lib"))) {
+      byte[] libraries = downloadWithProgress(baseUrl + "lib.zip", "Downloading libraries...");
+      Signlink.unzip(libraries, Signlink.getPath(LIB_DIR));
+    }
     
     if (Boolean.parseBoolean(properties.getProperty("natives"))) {
       byte[] natives = downloadWithProgress(baseUrl + getNativeArchiveName(), "Downloading natives...");
@@ -231,6 +240,25 @@ public class Updater implements Runnable {
     }
     
     return true;
+  }
+  
+  private boolean isValidClient(byte[] clientJar, Path revisionPath, Properties properties) throws IOException {
+    if (!hasExpectedCrc(clientJar, properties.getProperty("crc"))) {
+      return false;
+    }
+    
+    String expectedRevision = properties.getProperty("revision");
+    String actualRevision = new String(Files.readAllBytes(revisionPath)).trim();
+    
+    return actualRevision.equals(expectedRevision);
+  }
+  
+  private void requireProperty(Properties properties, String name) throws IOException {
+    String value = properties.getProperty(name);
+    
+    if (value == null || value.trim().isEmpty()) {
+      throw new IOException("Missing required client property: " + name);
+    }
   }
   
   private void launchClient(Properties properties) throws Exception {
