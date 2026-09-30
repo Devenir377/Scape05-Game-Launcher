@@ -9,6 +9,7 @@ import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -25,6 +26,7 @@ public class Updater implements Runnable {
 	
 	private static final String PROPERTIES_URL = "https://devenir377.github.io/Scape05-Game-Launcher/client.properties";
 	private static final String FALLBACK_PROPERTIES_URL = "https://gcache.2005.rs/client.properties";
+	private static final String JAVA_DOWNLOAD_URL = "https://www.oracle.com/java/technologies/downloads/#java17";
 	private static final String CACHED_PROPERTIES_FALLBACK = "properties-fallback.txt";
 	private static final String FALLBACK_PROPERTY = "fallback";
 	private static final String CODE_JAR = "lib/code.jar";
@@ -70,6 +72,10 @@ public class Updater implements Runnable {
 	}
 	
 	public static void main(String[] args) {
+		if (!checkJavaVersion()) {
+			return;
+		}
+
 		System.setProperty("https.protocols", "TLSv1.2");
 		
 		try {
@@ -81,6 +87,60 @@ public class Updater implements Runnable {
 		new Updater();
 	}
 	
+	private static boolean checkJavaVersion() {
+		if (isSupportedJavaVersion(System.getProperty("java.specification.version", ""))) {
+			return true;
+		}
+
+		String message = "Java 17 or newer is required to play Scape05.\n\n"
+				+ "This launcher is running on Java " + System.getProperty("java.version", "unknown") + ".\n"
+				+ "Install Java 17 or newer and use it to open Scape05.jar,\n"
+				+ "or use the Scape05 installer, which includes Java.\n\n"
+				+ "Java downloads: " + JAVA_DOWNLOAD_URL;
+		System.err.println(message);
+		if (!GraphicsEnvironment.isHeadless()) {
+			SwingUtilities.invokeLater(() -> {
+				int choice = JOptionPane.showOptionDialog(null, message, "Scape05 - Java update required",
+						JOptionPane.DEFAULT_OPTION, JOptionPane.ERROR_MESSAGE, null,
+						new String[] { "Open Java downloads", "Close" }, "Open Java downloads");
+				if (choice == 0) {
+					openJavaDownloads();
+				}
+			});
+		}
+		return false;
+	}
+
+	private static void openJavaDownloads() {
+		try {
+			if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+				Desktop.getDesktop().browse(URI.create(JAVA_DOWNLOAD_URL));
+				return;
+			}
+		} catch (IOException | UnsupportedOperationException | SecurityException e) {
+			System.err.println("Unable to open Java downloads: " + e.getMessage());
+		}
+		JTextField address = new JTextField(JAVA_DOWNLOAD_URL);
+		address.setEditable(false);
+		JOptionPane.showMessageDialog(null,
+				new Object[] { "Open this address in your browser:", address },
+				"Scape05 - Java downloads", JOptionPane.INFORMATION_MESSAGE);
+	}
+
+	static boolean isSupportedJavaVersion(String specificationVersion) {
+		String version = specificationVersion.startsWith("1.")
+				? specificationVersion.substring(2) : specificationVersion;
+		int separator = version.indexOf('.');
+		if (separator >= 0) {
+			version = version.substring(0, separator);
+		}
+		try {
+			return Integer.parseInt(version) >= 17;
+		} catch (NumberFormatException e) {
+			return false;
+		}
+	}
+
 	private void setPercent(int percent) {
 		SwingUtilities.invokeLater(() -> this.progress.bar.setValue(percent));
 	}

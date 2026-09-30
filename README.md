@@ -12,7 +12,8 @@ This is the Scape05 launcher, a launcher designed to easily download, verify, an
 
 **Cross-Platform**
 
-- It runs on Windows, macOS, and Linux, as long as you have a compatible JRE (Java 8+).
+- Playing requires Java 17 or newer on Windows, macOS, and Linux. The installer includes Java; standalone JAR users must launch it with Java 17 or newer.
+- The launcher remains compatible with Java 8 so older runtimes can show a clear upgrade message before downloading or loading the client.
 
 
 **Getting Started**
